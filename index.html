@@ -803,51 +803,23 @@ function presetTotals(items){
   items.forEach(function(it){ var v = lineVals(it); t.k += v.k; t.p += v.p; t.f += v.f; t.c += v.c; });
   return t;
 }
-function balancePreset(items, target){
-  var add = [
-    {cat:"Мясо", prod:presetProduct("Мясо","Филе индейки"), g:"0"},
-    {cat:"Жиры", prod:presetProduct("Жиры","Масло сливочное"), g:"0"},
-    {cat:"Крупа", prod:presetProduct("Крупа","Рис отварной"), g:"0"}
-  ];
-  function solve3(def){
-    var a = add.map(function(it){ var s = PROD[it.prod]; return [(s.p||0)/100,(s.f||0)/100,(s.c||0)/100]; });
-    var m = [[a[0][0],a[1][0],a[2][0],def.p],[a[0][1],a[1][1],a[2][1],def.f],[a[0][2],a[1][2],a[2][2],def.c]];
-    for (var col=0; col<3; col++) {
-      var best=col; for(var r=col+1;r<3;r++) if(Math.abs(m[r][col])>Math.abs(m[best][col])) best=r;
-      var tmp=m[col];m[col]=m[best];m[best]=tmp;
-      var div=m[col][col]; if(!div) return null;
-      for(var j=col;j<4;j++) m[col][j]/=div;
-      for(r=0;r<3;r++) if(r!==col){var q=m[r][col];for(j=col;j<4;j++)m[r][j]-=q*m[col][j];}
-    }
-    return [m[0][3],m[1][3],m[2][3]];
-  }
-  var original = items.map(function(it){ return {cat:it.cat,prod:it.prod,g:String(it.g)}; });
-  var solution = null;
-  for (var keep=.85; keep>=.1 && !solution; keep-=.05) {
-    items = original.map(function(it){
-      var x={cat:it.cat,prod:it.prod,g:String(Math.max(5,Math.round(num(it.g)*keep/5)*5))};
-      if(pieceG(x)) snapPieces(x); return x;
-    });
-    var cur=presetTotals(items), sol=solve3({p:target.p-cur.p,f:target.f-cur.f,c:target.c-cur.c});
-    if(sol && sol.every(function(v){return isFinite(v)&&v>=0;})) solution=sol;
-  }
-  if (!solution) solution=[0,0,0];
-  add.forEach(function(it,i){
-    var g=Math.round(solution[i]);
-    if(g>=1) items.push({cat:it.cat,prod:it.prod,g:String(g)});
-  });
-  return items;
-}
 function applyMealPreset(mid, pi){
-  var preset = MEAL_PRESETS[mid][pi], items = presetItems(preset), base = 0;
-  items.forEach(function(it){ base += lineVals(it).k; });
-  var goal = mealGoal(mid), scale = isFinite(goal) && goal > 0 && base > 0 ? goal / base : 1;
+  var preset = MEAL_PRESETS[mid][pi], items = presetItems(preset), foodK = 0, drinkK = 0;
   items.forEach(function(it){
+    if (it.cat === "Напиток") {
+      it.g = "250";
+      drinkK += lineVals(it).k;
+    } else foodK += lineVals(it).k;
+  });
+  var goal = mealGoal(mid), foodGoal = Math.max(0, goal - drinkK);
+  var scale = isFinite(foodGoal) && foodGoal > 0 && foodK > 0 ? foodGoal / foodK : 1;
+  items.forEach(function(it){
+    if (it.cat === "Напиток") return;
     var g = Math.max(5, Math.round(num(it.g) * scale / 5) * 5);
     it.g = String(g);
     if (pieceG(it)) snapPieces(it);
   });
-  S.meals[mid] = balancePreset(items, presetTargets(mid));
+  S.meals[mid] = items;
   if (!S.selectedPresets) S.selectedPresets = {};
   S.selectedPresets[mid] = pi;
   save(); renderMeals();
@@ -1312,9 +1284,9 @@ document.addEventListener("click", function(e){
 
 // подсказки
 for (var tk in TIPS) $(tk).textContent = TIPS[tk];
-// Один раз пересчитываем ранее выбранные варианты по новой строгой балансировке.
-if (S.presetBalanceV !== 3) {
-  S.presetBalanceV = 3;
+// Один раз пересобираем ранее выбранные варианты без добавочных продуктов.
+if (S.presetBalanceV !== 4) {
+  S.presetBalanceV = 4;
   if (S.selectedPresets) MEALS.forEach(function(m){
     var pi = S.selectedPresets[m.id];
     if (pi !== undefined && MEAL_PRESETS[m.id] && MEAL_PRESETS[m.id][pi]) applyMealPreset(m.id, pi);
