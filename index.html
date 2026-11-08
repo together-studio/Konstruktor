@@ -402,7 +402,7 @@ var MEAL_PRESETS = {
   b:[
     {n:"Тост с курицей", x:[["Хлеб","Цельнозерновой хлеб",30],["Молочное","Сыр легкий",25],["Мясо","Филе индейки",50],["Молочное","Греческий йогурт",20],["Сладкое","Печенье Яшкино",25],["Напиток","Кофе с молоком и с сахаром",200]]},
     {n:"Яйцо и ветчина", x:[["Яйца","Яйцо с желтком",60],["Овощи","Помидор",150],["Мясо","Ветчина Дымов",40],["Хлеб","Цельнозерновой хлеб",30],["Напиток","Сок апельсиновый",150],["Молочное","Йогурт \"Чудо\"",80]]},
-    {n:"Сырники", x:[["ПП-рецепт","ПП сырники для завтрака",110],["Сладкое","Мармелад",25],["Сладкое","Зефир",25],["Напиток","Чай без сахара",200]]},
+    {n:"Сырники", x:[["ПП-рецепт","ПП сырники для завтрака",108],["ПП-рецепт","Воздушный десерт «Киндер Кантри»",200],["Сладкое","Мармелад",10],["Напиток","Чай без сахара",250]]},
     {n:"Овсянка", x:[["ПП-рецепт","Овсянная каша с протеином",220],["Фрукты","Черника",60],["Фрукты","Банан",60],["Напиток","Кофе с молоком",200]]},
     {n:"Сэндвич", x:[["ПП-рецепт","Сэндвич с курицей",170],["Сладкое","Печенье Яшкино",25],["Напиток","Кофе с молоком и с сахаром",200]]}
   ],
@@ -803,6 +803,38 @@ function presetTotals(items){
   items.forEach(function(it){ var v = lineVals(it); t.k += v.k; t.p += v.p; t.f += v.f; t.c += v.c; });
   return t;
 }
+function fitPreset(items, target){
+  var food = items.filter(function(it){ return it.cat !== "Напиток"; });
+  function score(){
+    var t=presetTotals(items), keys=["k","p","f","c"], worst=0, sum=0;
+    keys.forEach(function(x){
+      if (!target[x]) return;
+      var e=Math.abs(t[x]-target[x])/target[x];
+      worst=Math.max(worst,e); sum+=e*e;
+    });
+    return worst*10+sum;
+  }
+  // Сначала приводим карточку к нужной калорийности, не меняя её состав.
+  var cur=presetTotals(items), fixedK=0;
+  items.forEach(function(it){ if(it.cat === "Напиток") fixedK += lineVals(it).k; });
+  var scale=cur.k>fixedK ? Math.max(.35,(target.k-fixedK)/(cur.k-fixedK)) : 1;
+  food.forEach(function(it){
+    it.g=String(Math.max(5,Math.round(num(it.g)*scale/5)*5));
+    if(pieceG(it)) snapPieces(it);
+  });
+  // Затем подправляем только количества позиций этой же карточки. Первая
+  // позиция — основное блюдо, поэтому она перебирается первой и шире остальных.
+  for(var pass=0;pass<7;pass++) food.forEach(function(it,idx){
+    var old=num(it.g), pg=pieceG(it), step=pg||5;
+    var max=Math.max(idx===0?600:350,old*2), best=old, bestScore=score();
+    for(var g=step;g<=max;g+=step){
+      it.g=String(g); var sc=score();
+      if(sc<bestScore){bestScore=sc;best=g;}
+    }
+    it.g=String(best);
+  });
+  return items;
+}
 function applyMealPreset(mid, pi){
   var preset = MEAL_PRESETS[mid][pi], items = presetItems(preset), foodK = 0, drinkK = 0;
   items.forEach(function(it){
@@ -819,7 +851,7 @@ function applyMealPreset(mid, pi){
     it.g = String(g);
     if (pieceG(it)) snapPieces(it);
   });
-  S.meals[mid] = items;
+  S.meals[mid] = fitPreset(items, presetTargets(mid));
   if (!S.selectedPresets) S.selectedPresets = {};
   S.selectedPresets[mid] = pi;
   save(); renderMeals();
@@ -1285,8 +1317,8 @@ document.addEventListener("click", function(e){
 // подсказки
 for (var tk in TIPS) $(tk).textContent = TIPS[tk];
 // Один раз пересобираем ранее выбранные варианты без добавочных продуктов.
-if (S.presetBalanceV !== 4) {
-  S.presetBalanceV = 4;
+if (S.presetBalanceV !== 5) {
+  S.presetBalanceV = 5;
   if (S.selectedPresets) MEALS.forEach(function(m){
     var pi = S.selectedPresets[m.id];
     if (pi !== undefined && MEAL_PRESETS[m.id] && MEAL_PRESETS[m.id][pi]) applyMealPreset(m.id, pi);
