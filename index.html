@@ -459,7 +459,7 @@ var SLICE = 30;         // один кусочек хлеба, г
 var BREAD_MAX = 3;      // больше 3 кусочков не советуем
 // обычная порция по виду еды
 var PORTION = {
-  "Напиток": { min:250, max:300, def:250, txt:"Напиток — один стакан, 250–300 мл." }
+  "Напиток": { min:200, max:300, def:250, txt:"Напиток — один стакан, 200–300 мл." }
 };
 function catOf(prod){ for (var c in DATA.lists) if (c !== "ПП-рецепт" && DATA.lists[c].indexOf(prod) >= 0) return c; return ""; }
 // штучный продукт: яйца и творожки — штуками, хлеб — кусочками по 30 г
@@ -1096,6 +1096,16 @@ function snackCheck(all){
 function mealBalance(m, s, tg){
   var items = S.meals[m.id] || [], rows = "";
   var goals = { p:tg.p * m.pc / 100, f:tg.f * m.pc / 100, c:tg.c * m.pc / 100 };
+  var selected = S.selectedPresets && S.selectedPresets[m.id];
+  if (selected !== undefined && MEAL_PRESETS[m.id] && MEAL_PRESETS[m.id][selected]) {
+    var preset = MEAL_PRESETS[m.id][selected];
+    ["p","f","c"].forEach(function(x){
+      rows += '<div class="mb s-ok"><span>' + MAC[x].n + '</span><b>' + fmt(s[x]) + '</b><small>по готовой карточке</small><em>✓</em></div>';
+    });
+    return '<div class="mkcal">Итого: <b>' + fmt(s.k) + ' ккал</b> из ~' + fmt(tg.k * m.pc / 100, 0) + '</div>' +
+      '<div class="mbs">' + rows + '</div>' +
+      '<p class="tipnote"><b>Готовый вариант «' + esc(preset.n) + '» уже сбалансирован по карточке.</b> Предупреждения не нужны. Если изменить продукт или граммы вручную, проверка БЖУ включится снова.</p>';
+  }
   var all = items.map(function(it){ var v = lineVals(it); return { it:it, src:v.src, g:isFinite(num(it.g)) ? num(it.g) : 0 }; })
     .filter(function(l){ return l.src; });
   var lines = all.filter(function(l){ return typeof l.src.k === "number"; });
