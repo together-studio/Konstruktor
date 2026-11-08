@@ -875,11 +875,13 @@ function renderMeals(){
   renderTotals();
 }
 function dayTarget(){ var r = calc(); return S.day === "train" ? r.mTrain : r.mRest; }
-function status(fact, goal){
+function statusTol(fact, goal, tolerance){
   if (!isFinite(goal) || goal <= 0) return "";
   var d = (fact - goal) / goal;
-  return Math.abs(d) <= 0.05 ? "s-ok" : (d > 0 ? "s-over" : "s-under");
+  return Math.abs(d) <= tolerance ? "s-ok" : (d > 0 ? "s-over" : "s-under");
 }
+function status(fact, goal){ return statusTol(fact, goal, .05); }
+function mealStatus(fact, goal){ return statusTol(fact, goal, .15); }
 function devText(fact, goal, unit){
   if (!isFinite(goal)) return "—";
   var d = fact - goal;
@@ -955,7 +957,7 @@ function macroTips(s, goals, lines, mainMeal, snack){
   // сначала — что уменьшить (перебор), потом — что увеличить (недобор), не трогая уже уменьшаемые продукты
   ["p","f","c"].forEach(function(x){
     var ex = s[x] - goals[x], best = null;
-    if (status(s[x], goals[x]) !== "s-over" || ex < SMALL) return;
+    if (mealStatus(s[x], goals[x]) !== "s-over" || ex < SMALL) return;
     lines.forEach(function(l){
       var c = l.g * (l.src[x] || 0) / 100;
       if (mainMeal && l.it.cat === "Хлеб") return;
@@ -968,7 +970,7 @@ function macroTips(s, goals, lines, mainMeal, snack){
   });
   ["p","f","c"].forEach(function(x){
     var de = goals[x] - s[x];
-    if (status(s[x], goals[x]) !== "s-under" || de < SMALL) return;
+    if (mealStatus(s[x], goals[x]) !== "s-under" || de < SMALL) return;
     // сладкое предлагаем увеличить только если больше нечего
     var cats = x !== "c" ? null : (snack ? SNACK_CARB_CATS : MAC.c.cats);
     var best = pickUp(lines, x, reduced, !snack, de, cats) || pickUp(lines, x, reduced, false, de, cats);
@@ -1149,17 +1151,17 @@ function mealBalance(m, s, tg){
   var lines = all.filter(function(l){ return typeof l.src.k === "number"; });
   var main = m.id === "l" || m.id === "d";
   ["p","f","c"].forEach(function(x){
-    var st = status(s[x], goals[x]);
+    var st = mealStatus(s[x], goals[x]);
     rows += '<div class="mb ' + st + '"><span>' + MAC[x].n + '</span><b>' + fmt(s[x]) + '</b><small>из ' + fmt(goals[x]) + ' г</small><em>' + devText(s[x], goals[x], ' г') + '</em></div>';
   });
   var mr = macroTips(s, goals, lines, main, m.id === "s"), mt = mr.tips;
   var ctx = { tooBig:status(s.k, tg.k * m.pc / 100) === "s-over", reduced:mr.reduced, increased:mr.increased,
-              macSt:{ p:status(s.p, goals.p), f:status(s.f, goals.f), c:status(s.c, goals.c) } };
+              macSt:{ p:mealStatus(s.p, goals.p), f:mealStatus(s.f, goals.f), c:mealStatus(s.c, goals.c) } };
   var pl = main ? plateMain(all, ctx) : (m.id === "b" ? breakfastCheck(all) : snackCheck(all));
   var h = '<div class="mkcal">Итого: <b>' + fmt(s.k) + ' ккал</b> из ~' + fmt(tg.k * m.pc / 100, 0) + '</div><div class="mbs">' + rows + '</div>';
   if (mt.length) h += '<div class="ptitle">Что поправить по БЖУ</div><ul class="tips">' + mt.join("") + '</ul>';
   else if (lines.length) h += '<p class="tipnote">' + (rows.indexOf("s-over") < 0 && rows.indexOf("s-under") < 0
-    ? 'Белки, жиры и углеводы в этом приёме — в пределах ±5% от цели.'
+    ? 'Белки, жиры и углеводы в этом приёме — в пределах ±15% от цели.'
     : 'Отклонения по БЖУ небольшие, меньше 3 г — можно ничего не менять.') + '</p>';
   h += pl.html;
   if (pl.tips.length) h += '<div class="ptitle">' + 'Что добавить или поправить' + '</div><ul class="tips">' + pl.tips.join("") + '</ul>';
