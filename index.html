@@ -194,6 +194,24 @@ details p{margin:8px 0 0}
 .plate i{display:block;height:100%}
 .dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px;vertical-align:0}
 
+/* ---------- личные блюда ---------- */
+.recipe-form{display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+.recipe-form.on{display:block}
+.recipe-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.recipe-ings{display:grid;gap:10px;margin:14px 0}
+.recipe-ing{display:grid;grid-template-columns:minmax(0,1fr) 94px 46px;gap:8px;align-items:end}
+.recipe-preview{background:var(--surface-green);border-radius:var(--radius-md);padding:12px 14px;margin:14px 0;color:var(--green-text)}
+.recipe-preview b{color:inherit}
+.recipe-actions{display:flex;gap:8px;flex-wrap:wrap}
+.recipe-actions .add{margin:0;flex:1 1 180px}
+.recipe-save{border-color:var(--primary)!important;background:var(--primary)!important;color:#fff!important}
+.recipe-list{display:grid;gap:10px;margin-top:14px}
+.recipe-card{border:1px solid var(--border);background:var(--bg);border-radius:var(--radius-md);padding:14px}
+.recipe-card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.recipe-card h3{font-size:1rem;margin-bottom:4px}
+.recipe-card p{font-size:.88rem;color:var(--text-soft);margin:0}
+.recipe-empty{font-size:.92rem;color:var(--text-soft);margin-top:12px}
+
 /* ---------- итоги ---------- */
 .tot{width:100%;border-collapse:collapse;font-size:.92rem;font-variant-numeric:tabular-nums}
 .tot th,.tot td{padding:9px 4px;text-align:right;border-bottom:1px solid var(--border)}
@@ -294,6 +312,32 @@ details p{margin:8px 0 0}
     <div class="meals" id="mealDist"></div>
   </div>
 
+  <div class="section" id="myRecipesSection">
+    <h2>Мои блюда</h2>
+    <p class="sub">Собери своё блюдо из продуктов базы. Оно сохранится только на этом устройстве и появится в конструкторе в категории «ПП-рецепт».</p>
+    <div class="card">
+      <button type="button" class="add" id="toggleRecipe">+ Создать своё блюдо</button>
+      <div class="recipe-form" id="recipeForm">
+        <div class="recipe-grid">
+          <label class="field"><span>Название блюда</span><input type="text" id="recipeName" placeholder="Например, голубцы"></label>
+          <label class="field"><span>Категория</span><select id="recipeCat"><option>Основное блюдо</option><option>Завтрак</option><option>Салат</option><option>Перекус</option><option>Десерт</option><option>Выпечка</option></select></label>
+        </div>
+        <div class="label-row">Ингредиенты</div>
+        <p class="note">Выбирай продукт в том виде, который указан в базе: сырой, варёный или готовый.</p>
+        <div class="recipe-ings" id="recipeIngredients"></div>
+        <button type="button" class="add" id="addRecipeIngredient">+ Добавить ингредиент</button>
+        <label class="field" style="margin-top:14px"><span>Итоговый вес готового блюда, г</span><input type="text" inputmode="decimal" id="recipeWeight" placeholder="Например, 1200"></label>
+        <p class="hint-line">Взвесь всё блюдо после приготовления — так КБЖУ на 100 г будут точнее.</p>
+        <div class="recipe-preview" id="recipePreview">Добавь ингредиенты и итоговый вес блюда.</div>
+        <div class="recipe-actions">
+          <button type="button" class="add recipe-save" id="saveRecipe">Сохранить в мой каталог</button>
+          <button type="button" class="add" id="cancelRecipe">Отмена</button>
+        </div>
+      </div>
+      <div class="recipe-list" id="myRecipeList"></div>
+    </div>
+  </div>
+
   <!-- БЛОК 2 -->
   <div class="section">
     <h2>2. Конструктор рациона</h2>
@@ -358,9 +402,9 @@ var TIPS = {
   tipEx:"Это справочная величина расхода тренировки — к калориям дня она отдельно не прибавляется."
 };
 
-var PROD = {}, REC = {};
+var PROD = {}, REC = {}, BASE_RECIPE_NAMES = [];
 DATA.products.forEach(function(p){ PROD[p.n] = p; });
-DATA.recipes.forEach(function(r){ REC[r.n] = r; });
+DATA.recipes.forEach(function(r){ REC[r.n] = r; BASE_RECIPE_NAMES.push(r.n); });
 
 // ---------- порции ----------
 // продукты, которые кладут целыми штуками
@@ -422,12 +466,13 @@ function defaults(){
     sex:"f", day:"train",
     f:{w:"51", t:"55", h:"161", a:"24", act:"mid", k:"", type:"подъем тяжестей", min:"45"},
     m:{w:"100", t:"110", tAuto:true, h:"182", a:"29", act:"mid", k:"", type:"подъем тяжестей", min:"90"},
-    meals:startMeals()
+    meals:startMeals(), customRecipes:[]
   };
 }
 var S;
 try { S = JSON.parse(localStorage.getItem(KEY)); } catch(e) { S = null; }
 if (!S || !S.f || !S.m || !S.meals) S = defaults();
+if (!Array.isArray(S.customRecipes)) S.customRecipes = [];
 MEALS.forEach(function(m){ (S.meals[m.id] || []).forEach(snapPieces); });
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {} }
 
@@ -443,6 +488,84 @@ function fmt(x, d){
 }
 function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 function $(id){ return document.getElementById(id); }
+
+// ---------- личный каталог блюд ----------
+var recipeDraft = [];
+function allRecipes(){ return DATA.recipes.concat(S.customRecipes || []); }
+function syncRecipes(){
+  REC = {};
+  allRecipes().forEach(function(r){ REC[r.n] = r; });
+  DATA.lists["ПП-рецепт"] = BASE_RECIPE_NAMES.concat((S.customRecipes || []).map(function(r){ return r.n; }));
+  PROT_RECIPES = allRecipes().filter(function(r){ return r.p >= RECIPE_PROT_MIN; }).sort(function(a, b){ return b.p - a.p; });
+  BREAKFAST_RECIPES = allRecipes().filter(function(r){ return r.cat === "Завтрак"; });
+  DESSERT_RECIPES = allRecipes().filter(function(r){ return r.cat === "Десерт"; });
+}
+function recipeProductOptions(selected){
+  return DATA.products.filter(function(p){ return typeof p.k === "number"; }).slice().sort(function(a,b){ return a.n.localeCompare(b.n, "ru"); }).map(function(p){
+    return '<option value="' + esc(p.n) + '"' + (p.n === selected ? ' selected' : '') + '>' + esc(p.n) + ' · ' + esc(p.s || p.cat || "") + '</option>';
+  }).join("");
+}
+function resetRecipeDraft(){
+  var first = DATA.products.filter(function(p){ return typeof p.k === "number"; }).sort(function(a,b){ return a.n.localeCompare(b.n, "ru"); })[0];
+  recipeDraft = [{prod:first ? first.n : "", g:"100"}];
+  if ($("recipeName")) $("recipeName").value = "";
+  if ($("recipeWeight")) $("recipeWeight").value = "";
+  renderRecipeIngredients();
+}
+function recipeTotals(){
+  var t = {k:0,p:0,f:0,c:0,g:0};
+  recipeDraft.forEach(function(it){
+    var p = PROD[it.prod], g = num(it.g);
+    if (!p || !isFinite(g) || g <= 0) return;
+    t.g += g; t.k += g * (p.k || 0) / 100; t.p += g * (p.p || 0) / 100; t.f += g * (p.f || 0) / 100; t.c += g * (p.c || 0) / 100;
+  });
+  return t;
+}
+function renderRecipePreview(){
+  if (!$("recipePreview")) return;
+  var t = recipeTotals(), w = num($("recipeWeight").value);
+  if (!isFinite(w) || w <= 0) {
+    $("recipePreview").innerHTML = '<b>Всего в ингредиентах:</b> ' + fmt(t.k) + ' ккал · Б ' + fmt(t.p) + ' · Ж ' + fmt(t.f) + ' · У ' + fmt(t.c) + '<br><span class="note">Укажи итоговый вес готового блюда для расчёта на 100 г.</span>';
+    return;
+  }
+  $("recipePreview").innerHTML = '<b>На 100 г готового блюда:</b> ' + fmt(t.k * 100 / w) + ' ккал · Б ' + fmt(t.p * 100 / w) + ' · Ж ' + fmt(t.f * 100 / w) + ' · У ' + fmt(t.c * 100 / w);
+}
+function renderRecipeIngredients(){
+  if (!$("recipeIngredients")) return;
+  var h = "";
+  recipeDraft.forEach(function(it, i){
+    h += '<div class="recipe-ing" data-ri="' + i + '"><label class="field"><span>Продукт</span><select data-ri-prod>' + recipeProductOptions(it.prod) + '</select></label>' +
+      '<label class="field"><span>Граммы</span><input type="text" inputmode="decimal" data-ri-g value="' + esc(it.g) + '"></label>' +
+      '<button type="button" class="del" data-ri-del aria-label="Удалить ингредиент">×</button></div>';
+  });
+  $("recipeIngredients").innerHTML = h;
+  renderRecipePreview();
+}
+function renderMyRecipes(){
+  if (!$("myRecipeList")) return;
+  if (!S.customRecipes.length) { $("myRecipeList").innerHTML = '<p class="recipe-empty">Личных блюд пока нет.</p>'; return; }
+  $("myRecipeList").innerHTML = S.customRecipes.map(function(r){
+    return '<div class="recipe-card"><div class="recipe-card-head"><div><h3>' + esc(r.n) + '</h3><p>' + fmt(r.k) + ' ккал · Б ' + fmt(r.p) + ' · Ж ' + fmt(r.f) + ' · У ' + fmt(r.c) + ' на 100 г</p></div>' +
+      '<button type="button" class="del" data-recipe-delete="' + esc(r.id) + '" aria-label="Удалить блюдо">×</button></div><p style="margin-top:8px">' + esc(r.ing) + '</p></div>';
+  }).join("");
+}
+function saveCustomRecipe(){
+  var name = $("recipeName").value.replace(/^\s+|\s+$/g, ""), cat = $("recipeCat").value, w = num($("recipeWeight").value), t = recipeTotals();
+  if (!name) { alert("Введи название блюда."); $("recipeName").focus(); return; }
+  if (REC[name]) { alert("Блюдо или рецепт с таким названием уже есть. Выбери другое название."); return; }
+  if (!isFinite(w) || w <= 0) { alert("Укажи итоговый вес готового блюда."); $("recipeWeight").focus(); return; }
+  if (!t.g) { alert("Добавь хотя бы один ингредиент и его вес."); return; }
+  var mul = 100 / w;
+  S.customRecipes.push({
+    id:String(Date.now()), n:name, cat:cat,
+    ing:recipeDraft.map(function(it){ return it.prod + " — " + fmt(num(it.g), 0) + " г"; }).join("; "),
+    por:"на 100 г", k:t.k * mul, p:t.p * mul, f:t.f * mul, c:t.c * mul,
+    how:"Личный рецепт. Итоговый вес готового блюда: " + fmt(w, 0) + " г.", parts:recipeDraft.slice(), finalWeight:w
+  });
+  syncRecipes(); save(); renderMyRecipes(); renderMeals();
+  $("recipeForm").className = "recipe-form"; $("toggleRecipe").textContent = "+ Создать своё блюдо";
+  resetRecipeDraft();
+}
 
 // ---------- расчёт (формулы из вкладок «Женщина» и «Мужчина») ----------
 function person(){ return S[S.sex]; }
@@ -764,9 +887,9 @@ var BREAD_AVG_C = (function(){
   listFor("Хлеб").forEach(function(x){ var p = PROD[x]; if (p && typeof p.c === "number") { s += p.c; n++; } });
   return n ? s / n : 0;
 })();
-// белковые ПП-рецепты — по убыванию белка
-var PROT_RECIPES = DATA.recipes.filter(function(r){ return r.p >= RECIPE_PROT_MIN; }).sort(function(a, b){ return b.p - a.p; });
-var BREAKFAST_RECIPES = DATA.recipes.filter(function(r){ return r.cat === "Завтрак"; });
+// встроенные и личные ПП-рецепты
+var PROT_RECIPES = [], BREAKFAST_RECIPES = [], DESSERT_RECIPES = [];
+syncRecipes();
 
 function exampleOf(names){ for (var i = 0; i < names.length; i++) if (PROD[names[i]]) return PROD[names[i]]; return null; }
 function checkLi(st, txt, sub){
@@ -889,7 +1012,6 @@ function breakfastCheck(all){
 
 // ---------- перекус: ПП-десерт, сладость, фрукт или бутерброд; напиток — по желанию ----------
 var SNACK_CATS = ["ПП-рецепт","Сладкое","Фрукты","Хлеб"];
-var DESSERT_RECIPES = DATA.recipes.filter(function(r){ return r.cat === "Десерт"; });
 function snackCheck(all){
   var tips = [], list = '', comp = [];
   all.forEach(function(l){ if (l.g > 0 && SNACK_CATS.indexOf(l.it.cat) >= 0) comp.push(l.it.prod); });
@@ -968,6 +1090,12 @@ function renderTotals(){
 // ---------- события ----------
 document.addEventListener("input", function(e){
   var el = e.target, k = el.getAttribute("data-k");
+  if (el.id === "recipeWeight") { renderRecipePreview(); return; }
+  if (el.hasAttribute("data-ri-g")) {
+    var ri = el.closest(".recipe-ing");
+    recipeDraft[+ri.getAttribute("data-ri")].g = el.value;
+    renderRecipePreview(); return;
+  }
   if (k) {
     var p = person();
     if (k === "t" && S.sex === "m") p.tAuto = false;
@@ -986,6 +1114,11 @@ document.addEventListener("input", function(e){
 });
 document.addEventListener("change", function(e){
   var el = e.target;
+  if (el.hasAttribute("data-ri-prod")) {
+    var ri = el.closest(".recipe-ing");
+    recipeDraft[+ri.getAttribute("data-ri")].prod = el.value;
+    renderRecipePreview(); return;
+  }
   if (el.id === "noBread") { S.noBread = el.checked; save(); renderTotals(); return; }
   if (el.name === "act") { person().act = el.value; save(); renderActs(); renderCalc(); if (el.value === "custom") $("customK").focus(); return; }
   var f = el.getAttribute("data-f");
@@ -1003,6 +1136,37 @@ document.addEventListener("change", function(e){
 });
 document.addEventListener("click", function(e){
   var el = e.target;
+  if (el.id === "toggleRecipe") {
+    var open = $("recipeForm").className.indexOf("on") < 0;
+    $("recipeForm").className = open ? "recipe-form on" : "recipe-form";
+    el.textContent = open ? "Скрыть форму" : "+ Создать своё блюдо";
+    if (open && !recipeDraft.length) resetRecipeDraft();
+    return;
+  }
+  if (el.id === "addRecipeIngredient") {
+    var first = DATA.products.filter(function(p){ return typeof p.k === "number"; }).sort(function(a,b){ return a.n.localeCompare(b.n, "ru"); })[0];
+    recipeDraft.push({prod:first ? first.n : "", g:"100"}); renderRecipeIngredients(); return;
+  }
+  if (el.hasAttribute("data-ri-del")) {
+    var ri = el.closest(".recipe-ing");
+    if (recipeDraft.length > 1) recipeDraft.splice(+ri.getAttribute("data-ri"), 1);
+    else recipeDraft[0].g = "0";
+    renderRecipeIngredients(); return;
+  }
+  if (el.id === "saveRecipe") { saveCustomRecipe(); return; }
+  if (el.id === "cancelRecipe") {
+    $("recipeForm").className = "recipe-form"; $("toggleRecipe").textContent = "+ Создать своё блюдо"; resetRecipeDraft(); return;
+  }
+  if (el.hasAttribute("data-recipe-delete")) {
+    var id = el.getAttribute("data-recipe-delete"), doomed = null;
+    S.customRecipes.forEach(function(r){ if (r.id === id) doomed = r; });
+    if (doomed && confirm("Удалить блюдо «" + doomed.n + "» из личного каталога?")) {
+      S.customRecipes = S.customRecipes.filter(function(r){ return r.id !== id; });
+      MEALS.forEach(function(m){ S.meals[m.id] = (S.meals[m.id] || []).filter(function(it){ return !(it.cat === "ПП-рецепт" && it.prod === doomed.n); }); });
+      syncRecipes(); save(); renderMyRecipes(); renderMeals();
+    }
+    return;
+  }
   if (el.id === "tBack") { S.m.tAuto = true; save(); fillInputs(); renderCalc(); return; }
   if (el.className && String(el.className).indexOf("q") === 0 && el.getAttribute("data-tip")) {
     var tip = $(el.getAttribute("data-tip")), on = tip.className.indexOf("on") < 0;
@@ -1031,6 +1195,8 @@ for (var tk in TIPS) $(tk).textContent = TIPS[tk];
 fillInputs();
 renderCalc();
 $("noBread").checked = !!S.noBread;
+resetRecipeDraft();
+renderMyRecipes();
 renderMeals();
 </script>
 </body>
