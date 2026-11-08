@@ -400,7 +400,7 @@ var START = {
 // выбранного человека и долю конкретного приёма пищи.
 var MEAL_PRESETS = {
   b:[
-    {n:"Тост с курицей", x:[["Хлеб","Хлеб тостовый",30],["Молочное","Сыр легкий",25],["Мясо","Филе индейки",50],["Молочное","Сыр творожный",20],["Сладкое","Печенье Яшкино",25],["Напиток","Кофе с молоком и с сахаром",250]]},
+    {n:"Тост с ветчиной", x:[["Хлеб","Хлеб тостовый",30],["Молочное","Сыр легкий",25],["Мясо","Ветчина Дымов",40],["Молочное","Сыр творожный",20],["Сладкое","Печенье Яшкино",25],["Напиток","Кофе с молоком и с сахаром",250]]},
     {n:"Яйцо и ветчина", x:[["Яйца","Яйцо с желтком",60],["Овощи","Помидор",150],["Мясо","Ветчина Дымов",40],["Хлеб","Хлеб тостовый",30],["Напиток","Сок апельсиновый",250],["Молочное","Йогурт \"Чудо\"",80]]},
     {n:"Сырники", x:[["ПП-рецепт","ПП сырники для завтрака",108],["ПП-рецепт","Воздушный десерт «Киндер Кантри»",200],["Сладкое","Мармелад",10],["Напиток","Чай без сахара",250]]},
     {n:"Овсянка", x:[["ПП-рецепт","Овсянная каша с протеином",220],["Фрукты","Черника",60],["Фрукты","Банан",60],["Напиток","Кофе с молоком",200]]},
@@ -479,14 +479,18 @@ var PORTION = {
 function catOf(prod){ for (var c in DATA.lists) if (c !== "ПП-рецепт" && DATA.lists[c].indexOf(prod) >= 0) return c; return ""; }
 // штучный продукт: яйца и творожки — штуками, хлеб — кусочками по 30 г
 function pieceOf(prod, cat){
-  if (PIECE[prod]) return { g:PIECE[prod], u:"шт", n:"Штук" };
+  if (PIECE[prod]) return { g:PIECE[prod], u:"шт", n:"Штук", max:prod === "Яйцо с желтком" ? 4 : null };
   if (cat === "Хлеб") return { g:SLICE, u:"кус.", n:"Кусочков", max:BREAD_MAX };
   return null;
 }
 function pieceG(it){ var pc = pieceOf(it.prod, it.cat); return pc ? pc.g : 0; }
 function snapPieces(it){
-  var pg = pieceG(it), g = num(it.g);
-  if (pg) it.g = String(Math.max(1, Math.round((isFinite(g) ? g : pg) / pg)) * pg);
+  var pc = pieceOf(it.prod, it.cat), pg = pc ? pc.g : 0, g = num(it.g);
+  if (pg) {
+    var n = Math.max(1, Math.round((isFinite(g) ? g : pg) / pg));
+    if (pc.max) n = Math.min(pc.max, n);
+    it.g = String(n * pg);
+  }
 }
 
 // ---------- структура тарелки (по весу продуктов) ----------
@@ -815,8 +819,17 @@ function presetTotals(items){
   items.forEach(function(it){ var v = lineVals(it); t.k += v.k; t.p += v.p; t.f += v.f; t.c += v.c; });
   return t;
 }
-function fitPreset(items, target){
+function fitPreset(items, target, mid, pi){
   var food = items.filter(function(it){ return it.cat !== "Напиток"; });
+  var sandwich = mid === "b" && pi === 0;
+  var linkedBread = sandwich ? food.find(function(it){ return it.cat === "Хлеб"; }) : null;
+  var linkedHam = sandwich ? food.find(function(it){ return it.prod.indexOf("Ветчина") >= 0; }) : null;
+  function syncSandwich(){
+    if (!linkedBread || !linkedHam) return;
+    // Один ломтик тостового хлеба на каждые начатые 40 г ветчины.
+    var slices = Math.max(1, Math.min(BREAD_MAX, Math.ceil(num(linkedHam.g) / 40)));
+    linkedBread.g = String(slices * SLICE);
+  }
   function score(){
     var t=presetTotals(items), keys=["p","f","c"], penalty=0;
     keys.forEach(function(x){
@@ -835,18 +848,23 @@ function fitPreset(items, target){
     it.g=String(Math.max(5,Math.round(num(it.g)*scale/5)*5));
     if(pieceG(it)) snapPieces(it);
   });
+  syncSandwich();
   // Затем подправляем только количества позиций этой же карточки. Первая
   // позиция — основное блюдо, поэтому она перебирается первой и шире остальных.
   for(var pass=0;pass<12;pass++) food.forEach(function(it,idx){
+    if (it === linkedBread) return;
     var old=num(it.g), pg=pieceG(it), step=pg||1;
-    var max=Math.max(idx===0?700:450,old*2.5), best=old, bestScore=score();
-    for(var g=step;g<=max;g+=step){
-      it.g=String(g); var sc=score();
+    var min=pg||5, max=Math.max(idx===0?700:450,old*2.5), best=old, bestScore=score();
+    if (it.prod === "Яйцо с желтком") max = 4 * PIECE["Яйцо с желтком"];
+    if (it.cat === "Хлеб") max = BREAD_MAX * SLICE;
+    for(var g=min;g<=max;g+=step){
+      it.g=String(g); syncSandwich(); var sc=score();
       if(sc<bestScore){bestScore=sc;best=g;}
     }
-    it.g=String(best);
+    it.g=String(best); syncSandwich();
   });
-  return items;
+  // 1–2 г невозможно нормально отмерить, поэтому такую позицию не показываем.
+  return items.filter(function(it){ return it.cat === "Напиток" || num(it.g) >= 3; });
 }
 function applyMealPreset(mid, pi){
   var preset = MEAL_PRESETS[mid][pi], items = presetItems(preset), foodK = 0, drinkK = 0;
@@ -864,7 +882,7 @@ function applyMealPreset(mid, pi){
     it.g = String(g);
     if (pieceG(it)) snapPieces(it);
   });
-  S.meals[mid] = fitPreset(items, presetTargets(mid));
+  S.meals[mid] = fitPreset(items, presetTargets(mid), mid, pi);
   if (!S.selectedPresets) S.selectedPresets = {};
   S.selectedPresets[mid] = pi;
   save(); renderMeals();
@@ -1169,7 +1187,8 @@ function mealBalance(m, s, tg){
   var main = m.id === "l" || m.id === "d";
   ["p","f","c"].forEach(function(x){
     var st = mealStatus(s[x], goals[x]);
-    rows += '<div class="mb ' + st + '"><span>' + MAC[x].n + '</span><b>' + fmt(s[x]) + '</b><small>из ' + fmt(goals[x]) + ' г</small><em>' + devText(s[x], goals[x], ' г') + '</em></div>';
+    var low = goals[x] * .85, high = goals[x] * 1.15;
+    rows += '<div class="mb ' + st + '"><span>' + MAC[x].n + '</span><b>' + fmt(s[x]) + '</b><small>норма ' + fmt(low) + '–' + fmt(high) + ' г (±15%)</small><em>' + devText(s[x], goals[x], ' г') + '</em></div>';
   });
   var mr = macroTips(s, goals, lines, main, m.id === "s"), mt = mr.tips;
   var ctx = { tooBig:status(s.k, tg.k * m.pc / 100) === "s-over", reduced:mr.reduced, increased:mr.increased,
@@ -1242,7 +1261,11 @@ document.addEventListener("input", function(e){
     var box = el.closest ? el.closest(".item") : null;
     if (!box) return;
     var editMid = box.getAttribute("data-m"), it0 = S.meals[editMid][+box.getAttribute("data-i")];
-    if (fg === "pcs") { var n = Math.round(num(el.value)); it0.g = isFinite(n) ? String(Math.max(0, n) * pieceG(it0)) : "0"; }
+    if (fg === "pcs") {
+      var n = Math.round(num(el.value)), pc0 = pieceOf(it0.prod, it0.cat);
+      if (pc0 && pc0.max) n = Math.min(pc0.max, n);
+      it0.g = isFinite(n) ? String(Math.max(0, n) * pieceG(it0)) : "0";
+    }
     else it0.g = el.value;
     clearMealPreset(editMid);
     save(); renderTotals();
@@ -1332,8 +1355,8 @@ document.addEventListener("click", function(e){
 // подсказки
 for (var tk in TIPS) $(tk).textContent = TIPS[tk];
 // Один раз пересобираем ранее выбранные варианты без добавочных продуктов.
-if (S.presetBalanceV !== 6) {
-  S.presetBalanceV = 6;
+if (S.presetBalanceV !== 7) {
+  S.presetBalanceV = 7;
   if (S.selectedPresets) MEALS.forEach(function(m){
     var pi = S.selectedPresets[m.id];
     if (pi !== undefined && MEAL_PRESETS[m.id] && MEAL_PRESETS[m.id][pi]) applyMealPreset(m.id, pi);
