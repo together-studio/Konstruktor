@@ -392,8 +392,8 @@ var MEALS = [
 // Начальный набор — как во вкладке «Конструктор — Женщина»
 var START = {
   b:[["Крупа","Гречка",200],["Яйца","Яйцо с желтком",100],["Молочное","Греческий йогурт",150],["Фрукты","Банан",120]],
-  l:[["Крупа","Гречка",200],["Мясо","Филе индейки",150],["Овощи","Авокадо",200],["Хлеб","Цельнозерновой хлеб",80],["Напиток","Вода",250]],
-  s:[["Молочное","Греческий йогурт",150],["Хлеб","Цельнозерновой хлеб",80],["Фрукты","Банан",120],["Сладкое","Мармелад",20]],
+  l:[["Крупа","Гречка",200],["Мясо","Филе индейки",150],["Овощи","Авокадо",200],["Хлеб","Бородинский хлеб",80],["Напиток","Вода",250]],
+  s:[["Молочное","Греческий йогурт",150],["Хлеб","Бородинский хлеб",80],["Фрукты","Банан",120],["Сладкое","Мармелад",20]],
   d:[["Крупа","Гречка",200],["Мясо","Филе индейки",150],["Рыба","Семга",120],["Овощи","Авокадо",200],["Жиры","Оливки",10]]
 };
 // 20 базовых сочетаний из карточек. Вес автоматически подгоняется под норму
@@ -416,13 +416,13 @@ var MEAL_PRESETS = {
   s:[
     {n:"Йогурт и банан", x:[["Молочное","Греческий йогурт",150],["Фрукты","Банан",75],["Сладкое","Мармелад",15]]},
     {n:"Десерт Snickers", x:[["ПП-рецепт","Десерт с начинкой SNICKERS",110],["Напиток","Чай без сахара",200]]},
-    {n:"Тост с паштетом", x:[["Хлеб","Цельнозерновой хлеб",30],["ПП-рецепт","ПП-паштет из куриной печени",40],["Напиток","Кофе с молоком и с сахаром",200]]},
+    {n:"Тост с паштетом", x:[["Хлеб","Бородинский хлеб",30],["ПП-рецепт","ПП-паштет из куриной печени",40],["Напиток","Кофе с молоком и с сахаром",250]]},
     {n:"Вафля и пудинг", x:[["ПП-рецепт","Венские вафли на твороге",80],["Молочное","Йогурт \"Чудо\"",60],["Напиток","Чай без сахара",200]]},
     {n:"Куриный салат", x:[["ПП-рецепт","Салат «Легкий» с грибами и сыром",160]]}
   ],
   d:[
-    {n:"Омлет с творогом", x:[["ПП-рецепт","Омлет с творогом",150],["Хлеб","Цельнозерновой хлеб",30],["Сладкое","Зефир",25],["Напиток","Морс ягодный",200]]},
-    {n:"Куриная запеканка", x:[["ПП-рецепт","Запеканка: куриное филе с кабачками",130],["Крупа","Гречка",120],["Хлеб","Цельнозерновой хлеб",30],["Сладкое","Протеиновые батончики",25],["Напиток","Сок яблочный",200]]},
+    {n:"Омлет с творогом", x:[["ПП-рецепт","Омлет с творогом",150],["Хлеб","Бородинский хлеб",30],["Сладкое","Зефир",25],["Напиток","Морс ягодный",250]]},
+    {n:"Куриная запеканка", x:[["ПП-рецепт","Запеканка: куриное филе с кабачками",130],["Крупа","Гречка",120],["Хлеб","Бородинский хлеб",30],["Сладкое","Протеиновые батончики",25],["Напиток","Сок яблочный",250]]},
     {n:"Карбонара", x:[["ПП-рецепт","Карбонара на скорую руку",220],["Сладкое","Мармелад",30],["Напиток","Чай с молоком и с сахаром",200]]},
     {n:"Макаронная запеканка", x:[["ПП-рецепт","Макаронная запеканка с сыром",180],["Сладкое","Мармелад",40],["Напиток","Сок апельсиновый",200]]},
     {n:"Картофельные ньокки", x:[["ПП-рецепт","Картофельные ньокки",200],["Сладкое","Печенье Яшкино",30],["Напиток","Морс ягодный",200]]}
@@ -448,6 +448,16 @@ var TIPS = {
   if (!DATA.products.some(function(x){ return x.n === p.n; })) DATA.products.push(p);
   if (DATA.lists[p.cat] && DATA.lists[p.cat].indexOf(p.n) < 0) DATA.lists[p.cat].push(p.n);
 });
+// Баранки не используются ни в готовых вариантах, ни в самостоятельной сборке.
+DATA.products = DATA.products.filter(function(p){ return p.n !== "Баранки (яичные)"; });
+Object.keys(DATA.lists).forEach(function(cat){
+  DATA.lists[cat] = DATA.lists[cat].filter(function(n){ return n !== "Баранки (яичные)"; });
+});
+// Для ручной сборки хлебом по умолчанию будет обычный тостовый хлеб.
+var BREAD_ORDER = ["Хлеб тостовый","Бородинский хлеб","Хлеб ржаной","Хлеб пшеничный","Цельнозерновой хлеб","Лаваш тонкий"];
+DATA.lists["Хлеб"] = BREAD_ORDER.filter(function(n){ return DATA.lists["Хлеб"].indexOf(n) >= 0; }).concat(
+  DATA.lists["Хлеб"].filter(function(n){ return BREAD_ORDER.indexOf(n) < 0; })
+);
 var PROD = {}, REC = {}, BASE_RECIPE_NAMES = [];
 DATA.products.forEach(function(p){ PROD[p.n] = p; });
 DATA.recipes.forEach(function(r){ REC[r.n] = r; BASE_RECIPE_NAMES.push(r.n); });
@@ -474,7 +484,7 @@ var SLICE = 30;         // один кусочек хлеба, г
 var BREAD_MAX = 3;      // больше 3 кусочков не советуем
 // обычная порция по виду еды
 var PORTION = {
-  "Напиток": { min:200, max:300, def:250, txt:"Напиток — один стакан, 200–300 мл." }
+  "Напиток": { min:250, max:250, def:250, txt:"Напиток — один стакан, 250 мл." }
 };
 function catOf(prod){ for (var c in DATA.lists) if (c !== "ПП-рецепт" && DATA.lists[c].indexOf(prod) >= 0) return c; return ""; }
 // штучный продукт: яйца и творожки — штуками, хлеб — кусочками по 30 г
@@ -533,6 +543,14 @@ var S;
 try { S = JSON.parse(localStorage.getItem(KEY)); } catch(e) { S = null; }
 if (!S || !S.f || !S.m || !S.meals) S = defaults();
 if (!Array.isArray(S.customRecipes)) S.customRecipes = [];
+// Обновляем и старые сохранённые рационы: баранки заменяем хлебом,
+// а напитки приводим к одному обычному стакану.
+MEALS.forEach(function(m){
+  (S.meals[m.id] || []).forEach(function(it){
+    if (it.prod === "Баранки (яичные)") { it.cat = "Хлеб"; it.prod = "Хлеб тостовый"; }
+    if (it.cat === "Напиток") it.g = "250";
+  });
+});
 MEALS.forEach(function(m){ (S.meals[m.id] || []).forEach(snapPieces); });
 function save(){ try { localStorage.setItem(KEY, JSON.stringify(S)); } catch(e) {} }
 
@@ -790,7 +808,7 @@ function itemHtml(mid, i, it){
       '<label class="field prod"><span>Продукт</span><select data-f="prod">' + popts + '</select></label>' +
       (pieceG(it)
         ? '<label class="field g"><span>' + pieceOf(it.prod, it.cat).n + '</span><input type="text" inputmode="numeric" data-f="pcs" value="' + Math.round(num(it.g) / pieceG(it)) + '"></label>'
-        : '<label class="field g"><span>' + (it.cat === "Напиток" ? "Мл" : "Граммы") + '</span><input type="text" inputmode="decimal" data-f="g" value="' + esc(it.g) + '"></label>') +
+        : '<label class="field g"><span>' + (it.cat === "Напиток" ? "Мл" : "Граммы") + '</span><input type="text" inputmode="decimal" data-f="g" value="' + esc(it.g) + '"' + (it.cat === "Напиток" ? ' readonly' : '') + '></label>') +
       '<button type="button" class="del" data-f="del" aria-label="Удалить продукт" title="Удалить продукт">×</button>' +
     '</div>' +
     '<div class="imeta" id="meta-' + mid + '-' + i + '">' + metaHtml(it, v) + '</div>' + extra + '</div>';
@@ -1078,12 +1096,12 @@ function breadInfo(all){
 function drinkCheck(all, required, tips){
   var d = drinkInfo(all), pr = PORTION["Напиток"];
   if (!d.ml) {
-    if (required) tips.push('<li class="t-under"><b>Нет напитка.</b> Добавь стакан, 250–300 мл: вода, чай, морс, компот или сок.</li>');
-    return checkLi(required ? "miss" : "opt", 'Напиток — стакан 250–300 мл' + (required ? '' : ', по желанию'));
+    if (required) tips.push('<li class="t-under"><b>Нет напитка.</b> Добавь стакан 250 мл: вода, чай, морс, компот или сок.</li>');
+    return checkLi(required ? "miss" : "opt", 'Напиток — стакан 250 мл' + (required ? '' : ', по желанию'));
   }
   var ok = d.ml >= pr.min && d.ml <= pr.max;
-  if (!ok) tips.push('<li class="' + (d.ml > pr.max ? 't-over' : 't-under') + '"><b>Напиток — ' + fmt(d.ml, 0) + ' мл.</b> Обычно это один стакан, 250–300 мл.</li>');
-  return checkLi(ok ? "ok" : "warn", 'Напиток — стакан 250–300 мл', 'сейчас: ' + d.names.map(esc).join(', ') + ', ' + fmt(d.ml, 0) + ' мл');
+  if (!ok) tips.push('<li class="' + (d.ml > pr.max ? 't-over' : 't-under') + '"><b>Напиток — ' + fmt(d.ml, 0) + ' мл.</b> Один стакан — 250 мл.</li>');
+  return checkLi(ok ? "ok" : "warn", 'Напиток — стакан 250 мл', 'сейчас: ' + d.names.map(esc).join(', ') + ', ' + fmt(d.ml, 0) + ' мл');
 }
 
 function plateMain(all, ctx){
@@ -1275,7 +1293,7 @@ document.addEventListener("input", function(e){
       if (pc0 && pc0.max) n = Math.min(pc0.max, n);
       it0.g = isFinite(n) ? String(Math.max(0, n) * pieceG(it0)) : "0";
     }
-    else it0.g = el.value;
+    else it0.g = it0.cat === "Напиток" ? "250" : el.value;
     clearMealPreset(editMid);
     save(); renderTotals();
   }
@@ -1364,8 +1382,8 @@ document.addEventListener("click", function(e){
 // подсказки
 for (var tk in TIPS) $(tk).textContent = TIPS[tk];
 // Один раз пересобираем ранее выбранные варианты без добавочных продуктов.
-if (S.presetBalanceV !== 8) {
-  S.presetBalanceV = 8;
+if (S.presetBalanceV !== 9) {
+  S.presetBalanceV = 9;
   if (S.selectedPresets) MEALS.forEach(function(m){
     var pi = S.selectedPresets[m.id];
     if (pi !== undefined && MEAL_PRESETS[m.id] && MEAL_PRESETS[m.id][pi]) applyMealPreset(m.id, pi);
