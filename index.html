@@ -346,7 +346,6 @@ details p{margin:8px 0 0}
       <button type="button" data-v="train">Тренировка</button>
       <button type="button" data-v="rest">Отдых</button>
     </div>
-    <label class="chk"><input type="checkbox" id="noBread"> <span><b>Не ем хлеб</b><small>Тогда хлеб на обеде и ужине не нужен — его углеводы переносим в крупу.</small></span></label>
     <div class="targets" id="targets"></div>
     <p class="note" style="margin-bottom:14px">Цель на день берётся из расчёта выше.</p>
     <div id="mealsBox"></div>
@@ -832,7 +831,7 @@ function macroTips(s, goals, lines, mainMeal, snack){
     if (status(s[x], goals[x]) !== "s-over" || ex < SMALL) return;
     lines.forEach(function(l){
       var c = l.g * (l.src[x] || 0) / 100;
-      if (mainMeal && l.it.cat === "Хлеб" && !S.noBread) return;
+      if (mainMeal && l.it.cat === "Хлеб") return;
       if (c > 0 && changeText(l, -ex * 100 / l.src[x]) && (!best || c > best.c)) best = { l:l, c:c };
     });
     if (!best) return;
@@ -882,11 +881,6 @@ var MAIN_ROWS = [
   { k:"veg",  n:"Овощи или фрукты", what:"клетчатка, около 30%", cats:["Овощи","Фрукты"], ex:["Огурец","Помидор"], mac:null, col:"var(--c-veg)" },
   { k:"fat",  n:"Жиры", what:"масла, орехи, авокадо", cats:["Жиры"], ex:[], mac:"f", col:"var(--f)", optional:true }
 ];
-var BREAD_AVG_C = (function(){
-  var s = 0, n = 0;
-  listFor("Хлеб").forEach(function(x){ var p = PROD[x]; if (p && typeof p.c === "number") { s += p.c; n++; } });
-  return n ? s / n : 0;
-})();
 // встроенные и личные ПП-рецепты
 var PROT_RECIPES = [], BREAKFAST_RECIPES = [], DESSERT_RECIPES = [];
 syncRecipes();
@@ -925,20 +919,13 @@ function plateMain(all, ctx){
 
   list += drinkCheck(all, true, tips);
 
-  // хлеб: 2–3 кусочка, или «не ем хлеб» — тогда его углеводы уходят в крупу
+  // хлеб — по желанию, рядом с основной тарелкой
   var b = breadInfo(all);
-  if (S.noBread) {
-    var krupa = null;
-    all.forEach(function(l){ if (l.it.cat === "Крупа" && l.src && l.src.c > 0 && (!krupa || l.g > krupa.g)) krupa = l; });
-    var sub = krupa && BREAD_AVG_C ? 'вместо 2 кусочков хлеба можно добавить к «' + esc(krupa.it.prod) + '» примерно ' + round5(2 * SLICE * BREAD_AVG_C / krupa.src.c) + ' г' : 'его углеводы берём из крупы';
-    list += checkLi("opt", 'Хлеб не ешь', sub);
-  } else if (!b.n) {
-    list += checkLi("miss", 'Хлеб — 2–3 кусочка (60–90 г)');
-    tips.push('<li class="t-under"><b>Нет хлеба.</b> Добавь 2 кусочка (60 г). Если не ешь хлеб — отметь «Не ем хлеб» выше, тогда его углеводы перенесём в крупу.</li>');
+  if (!b.n) {
+    list += checkLi("opt", 'Хлеб — по желанию');
   } else {
     var bok = b.n >= 2 && b.n <= BREAD_MAX;
-    list += checkLi(bok ? "ok" : "warn", 'Хлеб — 2–3 кусочка (60–90 г)', 'сейчас ' + b.n + ' кус., ' + fmt(b.g, 0) + ' г');
-    if (b.n < 2) tips.push('<li class="t-under"><b>Хлеба ' + b.n + ' кус.</b> Добавь ещё ' + (2 - b.n) + ' — нужно 2–3 кусочка.</li>');
+    list += checkLi(bok ? "ok" : "warn", 'Хлеб — по желанию, обычно 2–3 кусочка', 'сейчас ' + b.n + ' кус., ' + fmt(b.g, 0) + ' г');
     if (b.n > BREAD_MAX) tips.push('<li class="t-over"><b>Хлеба ' + b.n + ' кус.</b> Хватит 2–3 кусочков — убери ' + (b.n - BREAD_MAX) + '.</li>');
   }
 
@@ -1119,7 +1106,6 @@ document.addEventListener("change", function(e){
     recipeDraft[+ri.getAttribute("data-ri")].prod = el.value;
     renderRecipePreview(); return;
   }
-  if (el.id === "noBread") { S.noBread = el.checked; save(); renderTotals(); return; }
   if (el.name === "act") { person().act = el.value; save(); renderActs(); renderCalc(); if (el.value === "custom") $("customK").focus(); return; }
   var f = el.getAttribute("data-f");
   if (f === "cat" || f === "prod") {
@@ -1194,7 +1180,6 @@ document.addEventListener("click", function(e){
 for (var tk in TIPS) $(tk).textContent = TIPS[tk];
 fillInputs();
 renderCalc();
-$("noBread").checked = !!S.noBread;
 resetRecipeDraft();
 renderMyRecipes();
 renderMeals();
