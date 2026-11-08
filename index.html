@@ -936,13 +936,17 @@ function statusTol(fact, goal, tolerance){
 }
 function status(fact, goal){ return statusTol(fact, goal, .05); }
 function mealBounds(goal){
-  // Для БЖУ допустимо либо ±15%, либо ±8 г — используем более широкий коридор.
-  return { low:Math.min(goal * .85, goal - 8), high:Math.max(goal * 1.15, goal + 8) };
+  // Для БЖУ допустимо либо ±15%, либо ±8 г. Человек видит граммы,
+  // поэтому допустимое отклонение округляем вверх до целого грамма:
+  // например, 15% от 58,7 г = 8,8 г, то есть допустимо ±9 г.
+  var tolerance = Math.ceil(Math.max(goal * .15, 8));
+  return { low:goal - tolerance, high:goal + tolerance };
 }
 function mealStatus(fact, goal){
   if (!isFinite(goal) || goal <= 0) return "";
   var r = mealBounds(goal);
-  return fact < r.low ? "s-under" : (fact > r.high ? "s-over" : "s-ok");
+  // 0,05 г защищают пограничное значение от ошибки вычислений с десятичными дробями.
+  return fact < r.low - .05 ? "s-under" : (fact > r.high + .05 ? "s-over" : "s-ok");
 }
 function devText(fact, goal, unit){
   if (!isFinite(goal)) return "—";
@@ -1223,10 +1227,10 @@ function mealBalance(m, s, tg){
   var pl = main ? plateMain(all, ctx) : (m.id === "b" ? breakfastCheck(all) : snackCheck(all));
   var h = '<div class="mkcal">Итого: <b>' + fmt(s.k) + ' ккал</b> из ~' + fmt(tg.k * m.pc / 100, 0) + '</div><div class="mbs">' + rows + '</div>';
   var readyPreset = S.selectedPresets && S.selectedPresets[m.id] !== undefined;
-  if (readyPreset && !mt.length) h += '<p class="tipnote">Готовый вариант уже рассчитан: БЖУ находятся в допустимом диапазоне (±15% или до 8 г от цели).</p>';
+  if (readyPreset && !mt.length) h += '<p class="tipnote">Готовый вариант уже рассчитан: БЖУ находятся в допустимом диапазоне (±15%, округлённые до целого грамма, или не менее ±8 г).</p>';
   else if (mt.length) h += '<div class="ptitle">Что поправить по БЖУ</div><ul class="tips">' + mt.join("") + '</ul>';
   else if (lines.length) h += '<p class="tipnote">' + (rows.indexOf("s-over") < 0 && rows.indexOf("s-under") < 0
-    ? 'Белки, жиры и углеводы в допустимом диапазоне: ±15% или до 8 г от цели.'
+    ? 'Белки, жиры и углеводы в допустимом диапазоне: ±15%, округлённые до целого грамма, или не менее ±8 г.'
     : 'Отклонения по БЖУ небольшие, меньше 3 г — можно ничего не менять.') + '</p>';
   h += pl.html;
   if (pl.tips.length) h += '<div class="ptitle">' + 'Что добавить или поправить' + '</div><ul class="tips">' + pl.tips.join("") + '</ul>';
