@@ -439,6 +439,9 @@ var TIPS = {
 var PROD = {}, REC = {}, BASE_RECIPE_NAMES = [];
 DATA.products.forEach(function(p){ PROD[p.n] = p; });
 DATA.recipes.forEach(function(r){ REC[r.n] = r; BASE_RECIPE_NAMES.push(r.n); });
+// Калорийность этих рецептов приводим в соответствие с их же БЖУ.
+if (REC["Десерт с начинкой SNICKERS 🍫"]) REC["Десерт с начинкой SNICKERS 🍫"].k = 144;
+if (REC["Картофельные ньокки, клецки (по-польски клуски) 🥔"]) REC["Картофельные ньокки, клецки (по-польски клуски) 🥔"].k = 113;
 [
   {n:"ПП-паштет из куриной печени",cat:"Перекус",ing:"Куриная печень, плавленый сыр, яйцо и специи",por:"на 100 г",k:180,p:19,f:9,c:2,how:"Печень приготовить до готовности и измельчить с остальными ингредиентами."},
   {n:"Венские вафли на твороге",cat:"Перекус",ing:"Творог, пшеничная мука, яйца, молоко, протеин и банан",por:"на 100 г",k:171,p:16.4,f:5.3,c:12.6,how:"Смешать ингредиенты и выпекать порциями в вафельнице."}
@@ -790,6 +793,51 @@ function mealGoal(mid){
   MEALS.forEach(function(m){ if (m.id === mid) pc = m.pc; });
   return tg.k * pc / 100;
 }
+function presetTargets(mid){
+  var tg = dayTarget(), pc = 0;
+  MEALS.forEach(function(m){ if (m.id === mid) pc = m.pc / 100; });
+  return {k:tg.k * pc, p:tg.p * pc, f:tg.f * pc, c:tg.c * pc};
+}
+function presetTotals(items){
+  var t = {k:0,p:0,f:0,c:0};
+  items.forEach(function(it){ var v = lineVals(it); t.k += v.k; t.p += v.p; t.f += v.f; t.c += v.c; });
+  return t;
+}
+function balancePreset(items, target){
+  var add = [
+    {cat:"Мясо", prod:presetProduct("Мясо","Филе индейки"), g:"0"},
+    {cat:"Жиры", prod:presetProduct("Жиры","Масло сливочное"), g:"0"},
+    {cat:"Крупа", prod:presetProduct("Крупа","Рис отварной"), g:"0"}
+  ];
+  function solve3(def){
+    var a = add.map(function(it){ var s = PROD[it.prod]; return [(s.p||0)/100,(s.f||0)/100,(s.c||0)/100]; });
+    var m = [[a[0][0],a[1][0],a[2][0],def.p],[a[0][1],a[1][1],a[2][1],def.f],[a[0][2],a[1][2],a[2][2],def.c]];
+    for (var col=0; col<3; col++) {
+      var best=col; for(var r=col+1;r<3;r++) if(Math.abs(m[r][col])>Math.abs(m[best][col])) best=r;
+      var tmp=m[col];m[col]=m[best];m[best]=tmp;
+      var div=m[col][col]; if(!div) return null;
+      for(var j=col;j<4;j++) m[col][j]/=div;
+      for(r=0;r<3;r++) if(r!==col){var q=m[r][col];for(j=col;j<4;j++)m[r][j]-=q*m[col][j];}
+    }
+    return [m[0][3],m[1][3],m[2][3]];
+  }
+  var original = items.map(function(it){ return {cat:it.cat,prod:it.prod,g:String(it.g)}; });
+  var solution = null;
+  for (var keep=.85; keep>=.1 && !solution; keep-=.05) {
+    items = original.map(function(it){
+      var x={cat:it.cat,prod:it.prod,g:String(Math.max(5,Math.round(num(it.g)*keep/5)*5))};
+      if(pieceG(x)) snapPieces(x); return x;
+    });
+    var cur=presetTotals(items), sol=solve3({p:target.p-cur.p,f:target.f-cur.f,c:target.c-cur.c});
+    if(sol && sol.every(function(v){return isFinite(v)&&v>=0;})) solution=sol;
+  }
+  if (!solution) solution=[0,0,0];
+  add.forEach(function(it,i){
+    var g=Math.round(solution[i]);
+    if(g>=1) items.push({cat:it.cat,prod:it.prod,g:String(g)});
+  });
+  return items;
+}
 function applyMealPreset(mid, pi){
   var preset = MEAL_PRESETS[mid][pi], items = presetItems(preset), base = 0;
   items.forEach(function(it){ base += lineVals(it).k; });
@@ -799,7 +847,7 @@ function applyMealPreset(mid, pi){
     it.g = String(g);
     if (pieceG(it)) snapPieces(it);
   });
-  S.meals[mid] = items;
+  S.meals[mid] = balancePreset(items, presetTargets(mid));
   if (!S.selectedPresets) S.selectedPresets = {};
   S.selectedPresets[mid] = pi;
   save(); renderMeals();
@@ -1096,16 +1144,6 @@ function snackCheck(all){
 function mealBalance(m, s, tg){
   var items = S.meals[m.id] || [], rows = "";
   var goals = { p:tg.p * m.pc / 100, f:tg.f * m.pc / 100, c:tg.c * m.pc / 100 };
-  var selected = S.selectedPresets && S.selectedPresets[m.id];
-  if (selected !== undefined && MEAL_PRESETS[m.id] && MEAL_PRESETS[m.id][selected]) {
-    var preset = MEAL_PRESETS[m.id][selected];
-    ["p","f","c"].forEach(function(x){
-      rows += '<div class="mb s-ok"><span>' + MAC[x].n + '</span><b>' + fmt(s[x]) + '</b><small>по готовой карточке</small><em>✓</em></div>';
-    });
-    return '<div class="mkcal">Итого: <b>' + fmt(s.k) + ' ккал</b> из ~' + fmt(tg.k * m.pc / 100, 0) + '</div>' +
-      '<div class="mbs">' + rows + '</div>' +
-      '<p class="tipnote"><b>Готовый вариант «' + esc(preset.n) + '» уже сбалансирован по карточке.</b> Предупреждения не нужны. Если изменить продукт или граммы вручную, проверка БЖУ включится снова.</p>';
-  }
   var all = items.map(function(it){ var v = lineVals(it); return { it:it, src:v.src, g:isFinite(num(it.g)) ? num(it.g) : 0 }; })
     .filter(function(l){ return l.src; });
   var lines = all.filter(function(l){ return typeof l.src.k === "number"; });
@@ -1272,6 +1310,15 @@ document.addEventListener("click", function(e){
 
 // подсказки
 for (var tk in TIPS) $(tk).textContent = TIPS[tk];
+// Один раз пересчитываем ранее выбранные варианты по новой строгой балансировке.
+if (S.presetBalanceV !== 3) {
+  S.presetBalanceV = 3;
+  if (S.selectedPresets) MEALS.forEach(function(m){
+    var pi = S.selectedPresets[m.id];
+    if (pi !== undefined && MEAL_PRESETS[m.id] && MEAL_PRESETS[m.id][pi]) applyMealPreset(m.id, pi);
+  });
+  save();
+}
 fillInputs();
 renderCalc();
 resetRecipeDraft();
