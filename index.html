@@ -389,6 +389,16 @@ var MEALS = [
   {id:"s", n:"Перекус", pc:20},
   {id:"d", n:"Ужин",    pc:20}
 ];
+// Доли приёмов пищи из таблицы. У женщин: 25/35/20/20,
+// у мужчин: 20/35/15/30 (завтрак/обед/перекус/ужин).
+var MEAL_SHARE = {
+  f:{b:25,l:35,s:20,d:20},
+  m:{b:20,l:35,s:15,d:30}
+};
+function mealPercent(mid){
+  var bySex = MEAL_SHARE[S.sex] || MEAL_SHARE.f;
+  return bySex[mid] || 0;
+}
 // Начальный набор — как во вкладке «Конструктор — Женщина»
 var START = {
   b:[["Крупа","Гречка",200],["Яйца","Яйцо с желтком",100],["Молочное","Греческий йогурт",150],["Фрукты","Банан",120]],
@@ -757,9 +767,10 @@ function renderCalc(){
 
   var md = "";
   MEALS.forEach(function(m){
-    md += '<div class="meal-mini"><div class="n">' + m.n + '</div><div class="pc">' + m.pc + '% калорий</div>' +
-      '<div class="kv"><span>Тренировка</span><b>' + fmt(r.train * m.pc / 100, 0) + '</b></div>' +
-      '<div class="kv"><span>Отдых</span><b>' + fmt(r.rest * m.pc / 100, 0) + '</b></div></div>';
+    var pc = mealPercent(m.id);
+    md += '<div class="meal-mini"><div class="n">' + m.n + '</div><div class="pc">' + pc + '% калорий</div>' +
+      '<div class="kv"><span>Тренировка</span><b>' + fmt(r.train * pc / 100, 0) + '</b></div>' +
+      '<div class="kv"><span>Отдых</span><b>' + fmt(r.rest * pc / 100, 0) + '</b></div></div>';
   });
   $("mealDist").innerHTML = md;
   renderMode();
@@ -823,13 +834,11 @@ function presetItems(preset){
   return preset.x.map(function(x){ return {cat:x[0], prod:presetProduct(x[0], x[1]), g:String(x[2])}; });
 }
 function mealGoal(mid){
-  var tg = dayTarget(), pc = 0;
-  MEALS.forEach(function(m){ if (m.id === mid) pc = m.pc; });
-  return tg.k * pc / 100;
+  var tg = dayTarget();
+  return tg.k * mealPercent(mid) / 100;
 }
 function presetTargets(mid){
-  var tg = dayTarget(), pc = 0;
-  MEALS.forEach(function(m){ if (m.id === mid) pc = m.pc / 100; });
+  var tg = dayTarget(), pc = mealPercent(mid) / 100;
   return {k:tg.k * pc, p:tg.p * pc, f:tg.f * pc, c:tg.c * pc};
 }
 function presetTotals(items){
@@ -852,7 +861,7 @@ function fitPreset(items, target, mid, pi){
     var t=presetTotals(items), keys=["p","f","c"], penalty=0;
     keys.forEach(function(x){
       if (!target[x]) return;
-      var range=mealBounds(target[x]), outside=t[x]<range.low ? range.low-t[x] : (t[x]>range.high ? t[x]-range.high : 0);
+      var range=mealBounds(target[x],x,mid), outside=t[x]<range.low ? range.low-t[x] : (t[x]>range.high ? t[x]-range.high : 0);
       var e=Math.abs(t[x]-target[x])/target[x];
       penalty += Math.pow(outside/target[x],2)*1000 + e*e;
     });
@@ -913,7 +922,7 @@ function renderMeals(){
   var h = "";
   MEALS.forEach(function(m){
     var items = S.meals[m.id] || [];
-    h += '<div class="card mealcard"><h3>' + m.n + ' <small>' + m.pc + '% калорий</small></h3>';
+    h += '<div class="card mealcard"><h3>' + m.n + ' <small>' + mealPercent(m.id) + '% калорий</small></h3>';
     h += '<div class="preset-title">Готовые сбалансированные варианты</div><div class="meal-presets">';
     (MEAL_PRESETS[m.id] || []).forEach(function(p, pi){
       var on = S.selectedPresets && S.selectedPresets[m.id] === pi;
@@ -935,16 +944,22 @@ function statusTol(fact, goal, tolerance){
   return Math.abs(d) <= tolerance ? "s-ok" : (d > 0 ? "s-over" : "s-under");
 }
 function status(fact, goal){ return statusTol(fact, goal, .05); }
-function mealBounds(goal){
-  // Для БЖУ допустимо либо ±15%, либо ±8 г. Человек видит граммы,
-  // поэтому допустимое отклонение округляем вверх до целого грамма:
-  // например, 15% от 58,7 г = 8,8 г, то есть допустимо ±9 г.
-  var tolerance = Math.ceil(Math.max(goal * .15, 8));
+// В таблице контроль всего дня допускает ±10 г белка, ±10 г жиров
+// и ±20 г углеводов. Для отдельного приёма распределяем этот допуск
+// пропорционально его доле калорий, а не расширяем цель на ±15%/8 г.
+var DAY_MACRO_TOL = {p:10, f:10, c:20};
+function dayMacroStatus(fact, goal, macro){
+  if (!isFinite(goal) || goal <= 0) return "";
+  var tolerance = DAY_MACRO_TOL[macro] || 0;
+  return fact < goal - tolerance - .05 ? "s-under" : (fact > goal + tolerance + .05 ? "s-over" : "s-ok");
+}
+function mealBounds(goal, macro, mid){
+  var tolerance = (DAY_MACRO_TOL[macro] || 0) * mealPercent(mid) / 100;
   return { low:goal - tolerance, high:goal + tolerance };
 }
-function mealStatus(fact, goal){
+function mealStatus(fact, goal, macro, mid){
   if (!isFinite(goal) || goal <= 0) return "";
-  var r = mealBounds(goal);
+  var r = mealBounds(goal, macro, mid);
   // 0,05 г защищают пограничное значение от ошибки вычислений с десятичными дробями.
   return fact < r.low - .05 ? "s-under" : (fact > r.high + .05 ? "s-over" : "s-ok");
 }
@@ -1018,12 +1033,12 @@ function catsText(cats){ return cats.map(function(c){ return '«' + c + '»'; })
 // советы по белкам, жирам и углеводам приёма
 // в перекусе углеводы добираем простыми: сладости, фрукты, хлеб
 var SNACK_CARB_CATS = ["Сладкое","Фрукты","Хлеб"];
-function macroTips(s, goals, lines, mainMeal, snack){
+function macroTips(s, goals, lines, mainMeal, snack, mid){
   var tips = [], reduced = {}, increased = {};
   // сначала — что уменьшить (перебор), потом — что увеличить (недобор), не трогая уже уменьшаемые продукты
   ["p","f","c"].forEach(function(x){
-    var ex = s[x] - mealBounds(goals[x]).high, best = null;
-    if (mealStatus(s[x], goals[x]) !== "s-over" || ex < SMALL) return;
+    var ex = s[x] - mealBounds(goals[x],x,mid).high, best = null;
+    if (mealStatus(s[x], goals[x],x,mid) !== "s-over" || ex < SMALL) return;
     lines.forEach(function(l){
       var c = l.g * (l.src[x] || 0) / 100;
       if (mainMeal && l.it.cat === "Хлеб") return;
@@ -1035,8 +1050,8 @@ function macroTips(s, goals, lines, mainMeal, snack){
       changeText(best.l, -ex * 100 / best.l.src[x]) + ' — в нём больше всего ' + MAC[x].gen + ' в этом приёме.</li>');
   });
   ["p","f","c"].forEach(function(x){
-    var de = mealBounds(goals[x]).low - s[x];
-    if (mealStatus(s[x], goals[x]) !== "s-under" || de < SMALL) return;
+    var de = mealBounds(goals[x],x,mid).low - s[x];
+    if (mealStatus(s[x], goals[x],x,mid) !== "s-under" || de < SMALL) return;
     // сладкое предлагаем увеличить только если больше нечего
     var cats = x !== "c" ? null : (snack ? SNACK_CARB_CATS : MAC.c.cats);
     var best = pickUp(lines, x, reduced, !snack, de, cats) || pickUp(lines, x, reduced, false, de, cats);
@@ -1211,26 +1226,28 @@ function snackCheck(all){
 
 function mealBalance(m, s, tg){
   var items = S.meals[m.id] || [], rows = "";
-  var goals = { p:tg.p * m.pc / 100, f:tg.f * m.pc / 100, c:tg.c * m.pc / 100 };
+  var pc = mealPercent(m.id);
+  var goals = { p:tg.p * pc / 100, f:tg.f * pc / 100, c:tg.c * pc / 100 };
   var all = items.map(function(it){ var v = lineVals(it); return { it:it, src:v.src, g:isFinite(num(it.g)) ? num(it.g) : 0 }; })
     .filter(function(l){ return l.src; });
   var lines = all.filter(function(l){ return typeof l.src.k === "number"; });
   var main = m.id === "l" || m.id === "d";
   ["p","f","c"].forEach(function(x){
-    var st = mealStatus(s[x], goals[x]);
-    var range = mealBounds(goals[x]);
-    rows += '<div class="mb ' + st + '"><span>' + MAC[x].n + '</span><b>' + fmt(s[x]) + '</b><small>допустимо ' + fmt(range.low) + '–' + fmt(range.high) + ' г</small><em>' + devText(s[x], goals[x], ' г') + '</em></div>';
+    var st = mealStatus(s[x], goals[x], x, m.id);
+    var range = mealBounds(goals[x], x, m.id);
+    var tol = (range.high - range.low) / 2;
+    rows += '<div class="mb ' + st + '"><span>' + MAC[x].n + '</span><b>' + fmt(s[x]) + '</b><small>цель ' + fmt(goals[x]) + ' г · допуск ±' + fmt(tol) + ' г</small><em>' + devText(s[x], goals[x], ' г') + '</em></div>';
   });
-  var mr = macroTips(s, goals, lines, main, m.id === "s"), mt = mr.tips;
-  var ctx = { tooBig:status(s.k, tg.k * m.pc / 100) === "s-over", reduced:mr.reduced, increased:mr.increased,
-              macSt:{ p:mealStatus(s.p, goals.p), f:mealStatus(s.f, goals.f), c:mealStatus(s.c, goals.c) } };
+  var mr = macroTips(s, goals, lines, main, m.id === "s", m.id), mt = mr.tips;
+  var ctx = { tooBig:status(s.k, tg.k * pc / 100) === "s-over", reduced:mr.reduced, increased:mr.increased,
+              macSt:{ p:mealStatus(s.p, goals.p,"p",m.id), f:mealStatus(s.f, goals.f,"f",m.id), c:mealStatus(s.c, goals.c,"c",m.id) } };
   var pl = main ? plateMain(all, ctx) : (m.id === "b" ? breakfastCheck(all) : snackCheck(all));
-  var h = '<div class="mkcal">Итого: <b>' + fmt(s.k) + ' ккал</b> из ~' + fmt(tg.k * m.pc / 100, 0) + '</div><div class="mbs">' + rows + '</div>';
+  var h = '<div class="mkcal">Итого: <b>' + fmt(s.k) + ' ккал</b> из ~' + fmt(tg.k * pc / 100, 0) + '</div><div class="mbs">' + rows + '</div>';
   var readyPreset = S.selectedPresets && S.selectedPresets[m.id] !== undefined;
-  if (readyPreset && !mt.length) h += '<p class="tipnote">Готовый вариант уже рассчитан: БЖУ находятся в допустимом диапазоне (±15%, округлённые до целого грамма, или не менее ±8 г).</p>';
+  if (readyPreset && !mt.length) h += '<p class="tipnote">Готовый вариант уже рассчитан по формулам таблицы: 25% калорий из белка, 25% из жиров и 50% из углеводов.</p>';
   else if (mt.length) h += '<div class="ptitle">Что поправить по БЖУ</div><ul class="tips">' + mt.join("") + '</ul>';
   else if (lines.length) h += '<p class="tipnote">' + (rows.indexOf("s-over") < 0 && rows.indexOf("s-under") < 0
-    ? 'Белки, жиры и углеводы в допустимом диапазоне: ±15%, округлённые до целого грамма, или не менее ±8 г.'
+    ? 'Белки, жиры и углеводы близки к точной цели. Допуск рассчитан из суточных ±10 г белка, ±10 г жиров и ±20 г углеводов.'
     : 'Отклонения по БЖУ небольшие, меньше 3 г — можно ничего не менять.') + '</p>';
   h += pl.html;
   if (pl.tips.length) h += '<div class="ptitle">' + 'Что добавить или поправить' + '</div><ul class="tips">' + pl.tips.join("") + '</ul>';
@@ -1262,7 +1279,10 @@ function renderTotals(){
   t += '<tr><td><b>За день</b></td><td><b>' + fmt(day.k) + '</b></td><td><b>' + fmt(day.p) + '</b></td><td><b>' + fmt(day.f) + '</b></td><td><b>' + fmt(day.c) + '</b></td></tr>';
   t += '<tr><td>Цель</td><td>' + fmt(tg.k) + '</td><td>' + fmt(tg.p) + '</td><td>' + fmt(tg.f) + '</td><td>' + fmt(tg.c) + '</td></tr>';
   t += '<tr><td>Отклонение</td>';
-  ["k","p","f","c"].forEach(function(x){ t += '<td class="dv ' + status(day[x], tg[x]) + '">' + devText(day[x], tg[x]) + '</td>'; });
+  ["k","p","f","c"].forEach(function(x){
+    var st = x === "k" ? statusTol(day[x], tg[x], .10) : dayMacroStatus(day[x], tg[x], x);
+    t += '<td class="dv ' + st + '">' + devText(day[x], tg[x]) + '</td>';
+  });
   t += '</tr></tbody>';
   $("totTable").innerHTML = t;
   $("costLine").textContent = anyCost ? "Стоимость за день: " + fmt(day.cost, 2) + " ₽ (только продукты с указанной ценой)" : "Стоимость: цена не указана";
@@ -1386,8 +1406,8 @@ document.addEventListener("click", function(e){
 // подсказки
 for (var tk in TIPS) $(tk).textContent = TIPS[tk];
 // Один раз пересобираем ранее выбранные варианты без добавочных продуктов.
-if (S.presetBalanceV !== 9) {
-  S.presetBalanceV = 9;
+if (S.presetBalanceV !== 10) {
+  S.presetBalanceV = 10;
   if (S.selectedPresets) MEALS.forEach(function(m){
     var pi = S.selectedPresets[m.id];
     if (pi !== undefined && MEAL_PRESETS[m.id] && MEAL_PRESETS[m.id][pi]) applyMealPreset(m.id, pi);
