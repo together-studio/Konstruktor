@@ -1100,9 +1100,7 @@ function mealBalance(m, s, tg){
               macSt:{ p:mealStatus(s.p, goals.p,"p",m.id), f:mealStatus(s.f, goals.f,"f",m.id), c:mealStatus(s.c, goals.c,"c",m.id) } };
   var pl = main ? plateMain(all, ctx) : (m.id === "b" ? breakfastCheck(all) : snackCheck(all));
   var h = '<div class="mkcal">Итого: <b>' + fmt(s.k) + ' ккал</b> из ~' + fmt(tg.k * pc / 100, 0) + '</div><div class="mbs">' + rows + '</div>';
-  var readyPreset = S.selectedPresets && S.selectedPresets[m.id] !== undefined;
-  if (readyPreset && !mt.length) h += '<p class="tipnote">Готовый вариант уже рассчитан по формулам таблицы: 25% калорий из белка, 25% из жиров и 50% из углеводов.</p>';
-  else if (mt.length) h += '<div class="ptitle">Что поправить по БЖУ</div><ul class="tips">' + mt.join("") + '</ul>';
+  if (mt.length) h += '<div class="ptitle">Что поправить по БЖУ</div><ul class="tips">' + mt.join("") + '</ul>';
   else if (lines.length) h += '<p class="tipnote">' + (rows.indexOf("s-over") < 0 && rows.indexOf("s-under") < 0
     ? 'Белки, жиры и углеводы близки к точной цели. Допуск рассчитан из суточных ±10 г белка, ±10 г жиров и ±20 г углеводов.'
     : 'Отклонения по БЖУ небольшие, меньше 3 г — можно ничего не менять.') + '</p>';
